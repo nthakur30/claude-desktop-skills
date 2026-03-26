@@ -20,81 +20,111 @@ Activate when user says any of:
 - "make a doc from this"
 - "add this to my notes"
 
-## Step 1: Scan Obsidian Vault for Folders
+## Step 1: Scan Obsidian Vault for ACTUAL Folders
 
-**BEFORE asking questions**, scan the Obsidian vault to get current project folders.
+**CRITICAL: Only show folders that ACTUALLY EXIST in the vault scan. Do NOT hardcode or assume folder names.**
 
 **Vault base path**: `/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes`
 
-Use Desktop Commander to scan:
+### Scan Process
 
 ```javascript
-// First, scan Work Projects
+// Scan Work Projects
 desktop-commander:list_directory({
   path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Work Projects",
   depth: 1
 })
 
-// Then, scan Personal Projects
+// Scan Personal Projects
 desktop-commander:list_directory({
   path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Personal Projects", 
   depth: 1
 })
 ```
 
-**Extract folder names** from the results:
-- Look for lines starting with `[DIR]`
-- Ignore `.obsidian`, `.DS_Store`, and hidden folders
-- Build a list of project folder names for each category
+### Parse Results STRICTLY
+
+From the scan results:
+- **ONLY** extract lines starting with `[DIR]`
+- **IGNORE** lines starting with `[FILE]` — these are loose files, not folders
+- **IGNORE** `.obsidian`, `.DS_Store`, and hidden folders (starting with `.`)
+- Build a list of **ACTUAL folder names found**
+
+**Example scan result:**
+```
+[FILE] .DS_Store
+[DIR] Test
+[FILE] some-doc.md
+```
+
+From this, ONLY "Test" is a valid folder option.
 
 
-## Step 2: Ask User for Details (with dynamic options)
+## Step 2: Ask User for Details (with REAL folders only)
 
-Use `ask_user_input_v0` with the **actual folders found** in Step 1.
+Use `ask_user_input_v0` with **ONLY the actual folders found** in Step 1.
 
-**Build the questions dynamically:**
+### Question Flow
 
+**Question 1: Title**
 ```json
 {
-  "questions": [
-    {
-      "question": "What should this doc be titled?",
-      "type": "single_select",
-      "options": ["[Suggested title based on conversation]", "Let me type a custom title"]
-    },
-    {
-      "question": "Work or Personal project?",
-      "type": "single_select",
-      "options": ["Work Projects", "Personal Projects"]
-    },
-    {
-      "question": "Which project folder? (from Work Projects)",
-      "type": "single_select",
-      "options": ["[DYNAMICALLY POPULATED FROM SCAN]", "➕ Create new folder"]
-    }
-  ]
+  "question": "What should this doc be titled?",
+  "type": "single_select",
+  "options": ["[Suggested title]", "Custom title"]
 }
 ```
 
-**Dynamic options example:**
+**Question 2: Work or Personal**
+```json
+{
+  "question": "Work or Personal project?",
+  "type": "single_select",
+  "options": ["Work Projects", "Personal Projects"]
+}
+```
 
-If vault scan found:
-- Work Projects: `Claude`, `RASPI5-n8n`, `Trading-Algo`
-- Personal Projects: `Home-Server`, `Home-Assistant`, `Test`
+**Question 3: Project Folder (DYNAMIC - from scan)**
 
-Then show:
+Build options from ACTUAL scan results:
+
 ```json
 {
   "question": "Which project folder?",
-  "options": ["Claude", "RASPI5-n8n", "Trading-Algo", "➕ Create new folder"]
+  "type": "single_select",
+  "options": ["[ONLY FOLDERS FOUND IN SCAN]", "➕ Create new folder"]
 }
 ```
 
-**If user selects "➕ Create new folder":**
-Ask them to type the new folder name in the next message.
+**Example — if scan found these folders:**
+- Work Projects: `Claude`, `RASPI5-n8n`
+- Personal Projects: `Test`, `Home-Server`
 
-**If user selects "Let me type a custom title":**
-Ask them to type the title in the next message.
+And user selected "Work Projects", show:
+```json
+{
+  "options": ["Claude", "RASPI5-n8n", "➕ Create new folder"]
+}
+```
+
+**If NO folders found in selected category:**
+```json
+{
+  "options": ["➕ Create new folder"]
+}
+```
+
+### Handling "➕ Create new folder"
+
+If user selects this, ask:
+> What should the new folder be called?
+
+Then create it before saving the file.
+
+### Handling "Custom title"
+
+If user selects this, ask:
+> What title do you want for this doc?
 
 
 ## Step 3: Extract & Structure Content
@@ -105,7 +135,7 @@ Pull relevant content from the conversation. Structure as:
 ---
 title: [Document Title]
 date: [YYYY-MM-DD]
-project: "[[Project Name]]"
+project: "[[Project Folder Name]]"
 tags: [relevant, tags, here]
 related:
   - "[[Related Doc 1]]"
@@ -114,7 +144,7 @@ related:
 
 # [Document Title]
 
-> **Project**: [[Project Name]]
+> **Project**: [[Project Folder Name]]
 > **Created**: [Date]
 
 ## Overview
@@ -127,7 +157,7 @@ related:
 - [Bullet summary of important takeaways]
 
 ## Related
-- [[Project Name]] — Parent project
+- [[Project Folder Name]] — Parent project
 - [[Other Related Doc]] — If referenced in conversation
 
 ## Next Steps
@@ -140,10 +170,10 @@ related:
 ### Wiki-Link Rules for Obsidian Graph
 
 **ALWAYS use `[[double brackets]]` for:**
-- Project names: `[[Claude]]`, `[[Home Server]]`, `[[RASPI5-n8n]]`
+- Project folder names: `[[Claude]]`, `[[Home-Server]]`, `[[RASPI5-n8n]]`
 - Related documents: `[[API Setup Guide]]`, `[[Docker Configuration]]`
 - Concepts that might have their own notes: `[[n8n]]`, `[[Notion API]]`, `[[MCP]]`
-- Cross-references within the doc: `See [[Related Topic]]`
+- Cross-references: `See [[Related Topic]]`
 
 **Format patterns:**
 - Link to project: `[[Project Name]]`
@@ -165,13 +195,11 @@ related:
 
 ### Path Construction
 
-Based on user selections, build the path:
-
 ```
 /Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[Work or Personal Projects]/[Project Folder]/[filename].md
 ```
 
-### Create Folder if Missing (for new projects)
+### Create Folder if New
 
 If user selected "➕ Create new folder", create it first:
 
@@ -189,16 +217,16 @@ desktop-commander:start_process({
 - Keep under 50 chars
 - Example: "Home Assistant Setup Guide" → `home-assistant-setup-guide.md`
 
-
-### Write using Desktop Commander
+### Write File
 
 ```javascript
 desktop-commander:write_file({
   path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[project]/[filename].md",
-  content: "---\ntitle: ...\nproject: \"[[Project Name]]\"\n---\n\n# Content here...",
+  content: "---\ntitle: ...\nproject: \"[[Project Name]]\"\n---\n\n# Content...",
   mode: "rewrite"
 })
 ```
+
 
 ## Step 5: Create Notion Page
 
@@ -212,34 +240,38 @@ Use the Notion MCP to create a page in Project Notes database.
 - `date:Date:is_datetime` — set to 0
 - `Project` — JSON array of page URLs if linking to a project
 
-### Project URL Mapping (for Notion relations)
+### Project Linking for Notion
 
-When user selects a project, search for it first using `notion-search`, then use the page URL in the relation.
-
-### Notion API Call Structure
+Search for the project in Notion (may have different name than Obsidian folder):
 
 ```javascript
-// Use notion-create-pages tool
-{
-  "parent": {
-    "data_source_id": "28543898-8065-8094-a590-000ba4f44803"
-  },
-  "pages": [{
-    "properties": {
+Notion:notion-search({
+  query: "Project Name",
+  query_type: "internal",
+  filters: {}
+})
+```
+
+Then include the page URL in the relation.
+
+### Notion API Call
+
+```javascript
+Notion:notion-create-pages({
+  parent: { data_source_id: "28543898-8065-8094-a590-000ba4f44803" },
+  pages: [{
+    properties: {
       "Title ": "Document Title Here",
       "date:Date:start": "2026-03-26",
       "date:Date:is_datetime": 0,
       "Project": "[\"https://notion.so/project-page-id\"]"
     },
-    "content": "# Document content in Notion markdown..."
+    content: "# Document content..."
   }]
-}
+})
 ```
 
-
 ## Step 6: Confirm Both Outputs
-
-After creating both, confirm:
 
 > ✅ **Documentation saved to both locations:**
 >
@@ -247,101 +279,52 @@ After creating both, confirm:
 > 📓 **Notion**: [Title] — [notion page link]
 >
 > Linked to project: [[Project Name]]
->
-> The file is now syncing via iCloud and will appear in your Obsidian graph.
+
 
 ## Error Handling
 
 ### Desktop Commander Not Available
-If Desktop Commander isn't connected:
-> ⚠️ Can't write directly to Obsidian. Creating a downloadable .md file instead — drag it to your vault manually.
+> ⚠️ Can't write directly to Obsidian. Creating a downloadable .md file instead.
 
-Fall back to creating file in `/mnt/user-data/outputs/` and present for download.
+Fall back to `/mnt/user-data/outputs/` and present for download.
 
 ### Notion MCP Not Available
-If Notion tools aren't connected:
-> ⚠️ Notion isn't connected right now. I've saved the .md file to Obsidian — you can manually add it to Notion later.
+> ⚠️ Notion isn't connected. Saved to Obsidian only.
+
+### No Folders Found in Category
+Show only "➕ Create new folder" as the option.
 
 ### Folder Scan Failed
-If can't scan Obsidian vault:
-> ⚠️ Couldn't scan your vault. Please tell me the project folder name.
-
-### Project Not Found in Notion
-If specified project doesn't exist in Notion search:
-> I couldn't find a project called "[name]" in Notion. Creating the doc without a project link. You can add the relation manually.
-
+> ⚠️ Couldn't scan your vault. Please tell me the folder name.
 
 ## Quick Reference
 
 | User Says | Action |
 |-----------|--------|
-| "doc it" | Scan vault → Ask title, folder, project → Save both |
-| "doc it for Claude" | Scan vault → Pre-select Claude if exists → Ask folder |
-| "doc it in Work Projects" | Scan Work Projects → Show those folders → Ask title |
-| "doc this to Personal Projects/Home-Server" | All info provided → Confirm and save |
+| "doc it" | Scan vault → Ask title, category, folder → Save both |
+| "doc it for [project]" | Match to existing folder if found |
+| "doc it in Work Projects" | Pre-select category, scan for folders |
 
 ## Example Flow
 
 **User**: "doc it"
 
 **Claude**:
-1. Scans `/Users/nirvahnthakur/.../Project Notes/Work Projects/` → finds: `Claude`, `RASPI5-n8n`
-2. Scans `/Users/nirvahnthakur/.../Project Notes/Personal Projects/` → finds: `Home-Server`, `Test`
-3. Asks via `ask_user_input_v0`:
+1. Scans Work Projects → finds: (no folders)
+2. Scans Personal Projects → finds: `Test`
+3. Asks:
    - Title: "Doc-It Skill Setup" / Custom
-   - Work or Personal: Work Projects / Personal Projects
-   - Folder: Claude / RASPI5-n8n / ➕ Create new folder
+   - Work or Personal: Work / Personal
+   - Folder: `Test` / ➕ Create new folder (if Personal selected)
+   
+**User selects**: "Doc-It Skill Setup" / "Work Projects" / "➕ Create new folder"
 
-**User selects**: "Doc-It Skill Setup" / "Work Projects" / "Claude"
+**Claude**: "What should the new folder be called?"
+
+**User**: "Claude"
 
 **Claude**:
-1. Writes to `.../Work Projects/Claude/doc-it-skill-setup.md`
-2. Content includes `[[Claude]]` wiki-links
-3. Creates Notion page with relation to Claude project
-4. Confirms:
-
-> ✅ **Done!**
->
-> 📁 **Obsidian**: `Work Projects/Claude/doc-it-skill-setup.md`
-> 📓 **Notion**: Doc-It Skill Setup — [link]
->
-> Linked to: [[Claude]]
-
-
-## Shortcut Patterns
-
-If user provides info upfront, skip those questions:
-
-- "doc it for Claude" → Skip project question, still show folder scan results
-- "doc it as 'API Setup Guide'" → Skip title question
-- "doc it to Work Projects" → Skip work/personal question
-- "doc it to Work Projects/Claude as 'MCP Integration'" → Skip all, just confirm
-
-## New Folder Creation Flow
-
-If user selects "➕ Create new folder":
-
-1. Ask: "What should the new folder be called?"
-2. User types: "PulsePathAI"
-3. Create folder: `mkdir -p .../Work Projects/PulsePathAI`
-4. Write file into that new folder
-5. Confirm creation of both folder and file
-
-## Special Cases
-
-### Multi-Topic Conversations
-
-If conversation covered multiple topics, link them together:
-
-```markdown
-## Related Docs
-- [[Topic 1 Doc]] — First part of this conversation
-- [[Topic 2 Doc]] — Second part
-```
-
-### Code-Heavy Documentation
-
-For technical docs with lots of code:
-- Preserve all code blocks with syntax highlighting
-- Link to related docs with `[[wiki-links]]`
-- Include troubleshooting sections
+1. Creates folder: `.../Work Projects/Claude/`
+2. Writes `.../Work Projects/Claude/doc-it-skill-setup.md`
+3. Creates Notion page
+4. Confirms both locations
