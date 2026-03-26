@@ -6,7 +6,7 @@ description: Dual-output documentation workflow. Triggers on "doc it", "document
 # Doc-It: Dual Documentation Output
 
 When triggered, this skill extracts documentation from the conversation and outputs it in two formats:
-1. **Markdown file** — downloadable for Obsidian/Git
+1. **Markdown file** — saved directly to Obsidian vault
 2. **Notion page** — created in the user's Project Notes database
 
 ## Trigger Phrases
@@ -20,28 +20,33 @@ Activate when user says any of:
 - "make a doc from this"
 - "add this to my notes"
 
-## Step 1: Gather Minimal Info
+## Step 1: Ask User for Details
 
-Ask ONLY what's missing. If context is clear, skip to Step 2.
+Always ask these questions using the `ask_user_input_v0` tool:
 
-> Quick — I'll create both a .md file and a Notion page:
->
-> 1. **Title**: [suggest based on conversation topic]
-> 2. **Project**: Which project? (or "none")
+```json
+{
+  "questions": [
+    {
+      "question": "What should this doc be titled?",
+      "type": "single_select",
+      "options": ["[Suggested title based on conversation]", "Let me type a custom title"]
+    },
+    {
+      "question": "Which project is this for?",
+      "type": "single_select", 
+      "options": ["Claude", "Home Server", "RASPI5-n8n", "Home Assistant", "BOT—>Jarvis", "PulsePathAI", "Capstone Paper", "Project 01-Trading Algo", "AI Business", "None"]
+    },
+    {
+      "question": "Where should I save this in Obsidian?",
+      "type": "single_select",
+      "options": ["Work Projects", "Personal Projects"]
+    }
+  ]
+}
+```
 
-Present project options from their database if known:
-- Project 01-Trading Algo
-- AI Business
-- Home Assistant
-- PulsePathAI
-- Capstone Paper
-- Claude
-- Home Server
-- BOT—>Jarvis
-- RASPI5-n8n
-
-If user says a project name or abbreviation, match it. If "none", skip the relation.
-
+If user selects "Let me type a custom title", ask them to provide the title in the next message.
 
 ## Step 2: Extract & Structure Content
 
@@ -83,26 +88,34 @@ tags: [relevant, tags, here]
 6. **Links/resources** — include all mentioned URLs
 
 
-## Step 3: Generate Markdown File
+## Step 3: Save to Obsidian Vault
 
-Create the .md file and present for download:
+Use Desktop Commander to write directly to the Obsidian vault.
 
-```
-I've created your documentation:
+**Vault base path**: `/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes`
 
-📄 **[title].md** — [download link]
-
-Drag this to your Obsidian vault.
-```
-
-Use the `create_file` tool to write to `/mnt/user-data/outputs/[slugified-title].md`
+**Folder mapping**:
+- "Work Projects" → `/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Work Projects/`
+- "Personal Projects" → `/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Personal Projects/`
 
 ### Filename Rules
 - Lowercase
 - Replace spaces with hyphens
 - Remove special characters
 - Keep under 50 chars
-- Example: "Home Assistant Setup Guide" → `home-assistant-setup-guide.md`
+- Add date prefix for uniqueness: `YYYY-MM-DD-title-slug.md`
+- Example: "Home Assistant Setup Guide" → `2026-03-26-home-assistant-setup-guide.md`
+
+### Write using Desktop Commander
+
+```javascript
+// Use desktop-commander:write_file
+{
+  "path": "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[filename].md",
+  "content": "---\ntitle: ...\n---\n\n# Content here...",
+  "mode": "rewrite"
+}
+```
 
 ## Step 4: Create Notion Page
 
@@ -116,6 +129,21 @@ Use the Notion MCP to create a page in Project Notes database.
 - `date:Date:is_datetime` — set to 0
 - `Project` — JSON array of page URLs if linking to a project
 
+
+### Project URL Mapping (for Notion relations)
+
+When user selects a project, search for it first using `notion-search`, then use the page URL in the relation.
+
+**Known project pages** (search to get current URLs):
+- Claude
+- Home Server
+- RASPI5-n8n
+- Home Assistant
+- BOT—>Jarvis
+- PulsePathAI
+- Capstone Paper
+- Project 01-Trading Algo
+- AI Business
 
 ### Notion API Call Structure
 
@@ -137,31 +165,16 @@ Use the Notion MCP to create a page in Project Notes database.
 }
 ```
 
-### Project Linking
-
-If user specifies a project, search for it first:
-
-```javascript
-// Use notion-search to find project page
-{
-  "query": "Project Name",
-  "query_type": "internal",
-  "filters": {}
-}
-```
-
-Then include the page URL in the Project relation array.
-
 ## Step 5: Confirm Both Outputs
 
 After creating both, confirm:
 
 > ✅ **Documentation saved to both locations:**
 >
-> 📄 **Markdown**: [filename].md — [download link]
+> 📁 **Obsidian**: `[folder]/[filename].md` — synced via iCloud
 > 📓 **Notion**: [Title] — [notion page link]
 >
-> The .md file is ready to drag into your Obsidian vault.
+> Linked to project: [Project Name]
 
 
 ## Special Cases
@@ -195,12 +208,18 @@ If conversation covered multiple topics:
 
 ## Error Handling
 
+### Desktop Commander Not Available
+If Desktop Commander isn't connected:
+> ⚠️ Can't write directly to Obsidian. Creating a downloadable .md file instead — drag it to your vault manually.
+
+Fall back to creating file in `/mnt/user-data/outputs/` and present for download.
+
 ### Notion MCP Not Available
 If Notion tools aren't connected:
-> ⚠️ Notion isn't connected right now. I've created the .md file — you can manually add it to Notion later, or reconnect Notion and say "doc it" again.
+> ⚠️ Notion isn't connected right now. I've saved the .md file to Obsidian — you can manually add it to Notion later, or reconnect and say "doc it" again.
 
 ### Project Not Found
-If specified project doesn't exist:
+If specified project doesn't exist in Notion:
 > I couldn't find a project called "[name]". Creating the doc without a project link. You can add the relation manually in Notion.
 
 
@@ -208,24 +227,39 @@ If specified project doesn't exist:
 
 | User Says | Action |
 |-----------|--------|
-| "doc it" | Extract from full conversation |
-| "doc this section" | Extract from recent context only |
-| "doc it for [project]" | Link to specified project |
-| "doc it as [title]" | Use specified title |
+| "doc it" | Ask for title, project, folder → save both |
+| "doc it for Claude" | Pre-select Claude project, ask for folder |
+| "doc it in Work Projects" | Pre-select folder, ask for title/project |
+| "doc this to Personal Projects for Home Server" | All info provided, just confirm and save |
 
 ## Example Flow
 
-**User**: "doc it for the Home Server project"
+**User**: "doc it"
+
+**Claude** (using ask_user_input_v0):
+1. What should this doc be titled? → [suggested title] / Custom
+2. Which project? → Claude / Home Server / ... / None
+3. Where in Obsidian? → Work Projects / Personal Projects
+
+**User selects**: "Claude Workflow Automation" / "Claude" / "Work Projects"
 
 **Claude**:
-1. Extracts conversation content
-2. Generates `home-server-[topic].md`
-3. Creates Notion page with Project relation to "Home Server"
-4. Presents both links
+1. Writes to `/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Work Projects/2026-03-26-claude-workflow-automation.md`
+2. Creates Notion page in Project Notes with relation to Claude project
+3. Confirms:
 
 > ✅ **Done!**
 >
-> 📄 `home-server-docker-setup.md` — [download]
-> 📓 **Docker Setup Guide** — [Notion link]
+> 📁 **Obsidian**: `Work Projects/2026-03-26-claude-workflow-automation.md`
+> 📓 **Notion**: Claude Workflow Automation — [link]
 >
-> Linked to: Home Server project
+> Linked to: Claude
+
+## Shortcut Patterns
+
+If user provides info upfront, skip those questions:
+
+- "doc it for Home Server" → Skip project question
+- "doc it as 'API Setup Guide'" → Skip title question  
+- "doc it to Personal Projects" → Skip folder question
+- "doc it for Claude in Work Projects as 'MCP Integration'" → Skip all questions, just confirm
