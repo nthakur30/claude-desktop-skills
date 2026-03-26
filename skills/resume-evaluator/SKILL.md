@@ -58,10 +58,83 @@ After presenting the report, ask:
 > 1. **Deep dive** — Detailed feedback on a specific section
 > 2. **Rewrite bullets** — Transform weak bullets using the CAR+M formula
 > 3. **Match to job posting** — Analyze gaps against a specific job description
-> 4. **Generate improved version** — Create an improved resume file
+> 4. **Build my one-page resume** — Generate a polished, complete one-page resume
 > 5. **Done for now** — We're finished
 >
 > Pick a number or tell me what you need.
+
+## Step 6: Build One-Page Resume (if user selects option 4)
+
+### Rules — non-negotiable
+- **Exactly one page** — ruthlessly cut to fit; never truncate meaning, always compress wording
+- **Zero information loss** — every role, company, date, and achievement from the original must appear
+- **Preserve all metrics** — any number, percentage, or dollar figure in the original must survive
+- **Do not invent** — never add facts, metrics, or responsibilities that weren't in the original
+
+### Compression Hierarchy (cut in this order until it fits)
+1. Remove outdated skills list filler (MS Office, typing, etc.)
+2. Remove "References available upon request" and objective statements
+3. Tighten bullets to single lines — remove filler words, keep the metric
+4. Merge redundant bullets that make the same point
+5. Reduce education section to: Degree, School, Year (drop GPA if ≥ 3 years out)
+6. Trim summary/profile to 2 sentences max
+7. Reduce margins and font size only as a last resort (minimum: 0.5in margins, 10pt font)
+
+### Output Format
+
+Produce the resume as a clean markdown block with this structure:
+
+```
+# [Full Name]
+[email] • [phone] • [LinkedIn] • [city, state only — no street]
+
+## Summary
+[2 sentences max — value prop tailored to target role]
+
+## Experience
+
+**[Job Title]** | [Company] | [Start] – [End]
+- [Bullet using CAR+M: action + result + metric]
+- [Bullet]
+- [Bullet — max 3 per role for mid/senior; 2 for older roles]
+
+[repeat for each role]
+
+## Education
+**[Degree]**, [School] — [Year]
+
+## Skills
+[Comma-separated, role-relevant only — max 12]
+```
+
+### Humanizer Pass — REQUIRED
+
+After generating the resume draft, invoke the **humanizer skill** to rewrite the language:
+
+> @humanizer — Please rewrite this resume to sound like a real person wrote it. Keep all facts, metrics, and dates exactly as written. Make bullets punchy and direct. Remove any AI-sounding phrases like "leveraged", "spearheaded", "fostered cross-functional synergies", or "results-driven professional." The writing should feel confident and natural — like someone who knows what they're good at.
+
+Apply the humanizer output as the final version. If the humanizer skill is not available, manually replace any of these AI-clichés before delivering:
+
+| Replace | With |
+|---------|------|
+| Leveraged | Used / Built with |
+| Spearheaded | Led / Started |
+| Synergized / Collaborated cross-functionally | Worked with [teams] |
+| Results-driven professional | (just delete it) |
+| Passionate about | (just delete it) |
+| Utilized | Used |
+| Interfaced with | Worked with |
+
+### Final Delivery
+
+After the humanizer pass, present the finished resume and say:
+
+> Here's your one-page resume — all your experience, compressed and cleaned up.
+>
+> Want me to:
+> - Adjust the tone for a specific company culture (startup vs. corporate)?
+> - Swap in keywords from a job posting?
+> - Export this as a formatted file?
 
 ## CAR+M Formula for Bullets
 
