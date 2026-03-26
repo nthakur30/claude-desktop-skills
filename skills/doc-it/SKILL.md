@@ -20,9 +20,39 @@ Activate when user says any of:
 - "make a doc from this"
 - "add this to my notes"
 
-## Step 1: Ask User for Details
+## Step 1: Scan Obsidian Vault for Folders
 
-Always ask these questions using the `ask_user_input_v0` tool:
+**BEFORE asking questions**, scan the Obsidian vault to get current project folders.
+
+**Vault base path**: `/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes`
+
+Use Desktop Commander to scan:
+
+```javascript
+// First, scan Work Projects
+desktop-commander:list_directory({
+  path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Work Projects",
+  depth: 1
+})
+
+// Then, scan Personal Projects
+desktop-commander:list_directory({
+  path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Personal Projects", 
+  depth: 1
+})
+```
+
+**Extract folder names** from the results:
+- Look for lines starting with `[DIR]`
+- Ignore `.obsidian`, `.DS_Store`, and hidden folders
+- Build a list of project folder names for each category
+
+
+## Step 2: Ask User for Details (with dynamic options)
+
+Use `ask_user_input_v0` with the **actual folders found** in Step 1.
+
+**Build the questions dynamically:**
 
 ```json
 {
@@ -33,23 +63,41 @@ Always ask these questions using the `ask_user_input_v0` tool:
       "options": ["[Suggested title based on conversation]", "Let me type a custom title"]
     },
     {
-      "question": "Which project is this for?",
-      "type": "single_select", 
-      "options": ["Claude", "Home Server", "RASPI5-n8n", "Home Assistant", "BOT—>Jarvis", "PulsePathAI", "Capstone Paper", "Project 01-Trading Algo", "AI Business", "None"]
-    },
-    {
       "question": "Work or Personal project?",
       "type": "single_select",
       "options": ["Work Projects", "Personal Projects"]
+    },
+    {
+      "question": "Which project folder? (from Work Projects)",
+      "type": "single_select",
+      "options": ["[DYNAMICALLY POPULATED FROM SCAN]", "➕ Create new folder"]
     }
   ]
 }
 ```
 
-If user selects "Let me type a custom title", ask them to provide the title in the next message.
+**Dynamic options example:**
+
+If vault scan found:
+- Work Projects: `Claude`, `RASPI5-n8n`, `Trading-Algo`
+- Personal Projects: `Home-Server`, `Home-Assistant`, `Test`
+
+Then show:
+```json
+{
+  "question": "Which project folder?",
+  "options": ["Claude", "RASPI5-n8n", "Trading-Algo", "➕ Create new folder"]
+}
+```
+
+**If user selects "➕ Create new folder":**
+Ask them to type the new folder name in the next message.
+
+**If user selects "Let me type a custom title":**
+Ask them to type the title in the next message.
 
 
-## Step 2: Extract & Structure Content
+## Step 3: Extract & Structure Content
 
 Pull relevant content from the conversation. Structure as:
 
@@ -102,6 +150,7 @@ related:
 - Link with alias: `[[actual-file-name|Display Text]]`
 - Link to heading: `[[Document#Heading]]`
 
+
 ### Content Extraction Rules
 
 1. **Code blocks** — preserve with language tags
@@ -112,53 +161,25 @@ related:
 6. **Links/resources** — include all mentioned URLs
 7. **Related concepts** — wrap in `[[wiki-links]]` for graph connections
 
-
-## Step 3: Save to Obsidian Vault
-
-Use Desktop Commander to write directly to the Obsidian vault.
-
-**Vault base path**: `/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes`
-
-### Folder Structure
-
-```
-Project Notes/
-├── Work Projects/
-│   ├── Claude/
-│   │   ├── mcp-integration-guide.md
-│   │   └── doc-it-skill-setup.md
-│   ├── RASPI5-n8n/
-│   │   └── workflow-automation.md
-│   └── Project 01-Trading Algo/
-│       └── api-documentation.md
-├── Personal Projects/
-│   ├── Home Server/
-│   │   └── docker-setup.md
-│   ├── Home Assistant/
-│   │   └── automation-config.md
-│   └── BOT—>Jarvis/
-│       └── telegram-bot-docs.md
-```
+## Step 4: Save to Obsidian Vault
 
 ### Path Construction
 
 Based on user selections, build the path:
 
 ```
-/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[Work or Personal Projects]/[Project Name]/[filename].md
+/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[Work or Personal Projects]/[Project Folder]/[filename].md
 ```
 
-**Examples:**
-- Work + Claude + "MCP Setup" → `.../Work Projects/Claude/mcp-setup.md`
-- Personal + Home Server + "Docker Config" → `.../Personal Projects/Home Server/docker-config.md`
+### Create Folder if Missing (for new projects)
 
-### Create Folder if Missing
-
-Before writing, ensure the project folder exists:
+If user selected "➕ Create new folder", create it first:
 
 ```javascript
-// Use desktop-commander:start_process
-mkdir -p "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[project]"
+desktop-commander:start_process({
+  command: "mkdir -p '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[new-project-name]'",
+  timeout_ms: 5000
+})
 ```
 
 ### Filename Rules
@@ -172,15 +193,14 @@ mkdir -p "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Docum
 ### Write using Desktop Commander
 
 ```javascript
-// Use desktop-commander:write_file
-{
-  "path": "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[project]/[filename].md",
-  "content": "---\ntitle: ...\nproject: \"[[Project Name]]\"\n---\n\n# Content here...",
-  "mode": "rewrite"
-}
+desktop-commander:write_file({
+  path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[project]/[filename].md",
+  content: "---\ntitle: ...\nproject: \"[[Project Name]]\"\n---\n\n# Content here...",
+  mode: "rewrite"
+})
 ```
 
-## Step 4: Create Notion Page
+## Step 5: Create Notion Page
 
 Use the Notion MCP to create a page in Project Notes database.
 
@@ -195,18 +215,6 @@ Use the Notion MCP to create a page in Project Notes database.
 ### Project URL Mapping (for Notion relations)
 
 When user selects a project, search for it first using `notion-search`, then use the page URL in the relation.
-
-**Known project pages** (search to get current URLs):
-- Claude
-- Home Server
-- RASPI5-n8n
-- Home Assistant
-- BOT—>Jarvis
-- PulsePathAI
-- Capstone Paper
-- Project 01-Trading Algo
-- AI Business
-
 
 ### Notion API Call Structure
 
@@ -228,7 +236,8 @@ When user selects a project, search for it first using `notion-search`, then use
 }
 ```
 
-## Step 5: Confirm Both Outputs
+
+## Step 6: Confirm Both Outputs
 
 After creating both, confirm:
 
@@ -240,38 +249,6 @@ After creating both, confirm:
 > Linked to project: [[Project Name]]
 >
 > The file is now syncing via iCloud and will appear in your Obsidian graph.
-
-## Special Cases
-
-### Diagrams & Images
-
-If the conversation includes:
-- **Mermaid diagrams** — embed the code in both outputs
-- **Architecture diagrams** — include ASCII or Mermaid representation
-- **Screenshots referenced** — note their location/context
-
-### Code-Heavy Documentation
-
-For technical docs with lots of code:
-- Preserve all code blocks with syntax highlighting
-- Add brief explanations before each block
-- Include any error messages and solutions
-- Link to related docs with `[[wiki-links]]`
-
-
-### Multi-Topic Conversations
-
-If conversation covered multiple topics:
-- Ask user which parts to document
-- Or offer to create multiple docs
-- Link them together with `[[wiki-links]]`
-
-> This conversation covered several topics:
-> 1. n8n workflow setup
-> 2. Notion database structure  
-> 3. Obsidian sync options
->
-> Document all as one doc, or separate docs for each?
 
 ## Error Handling
 
@@ -285,56 +262,86 @@ Fall back to creating file in `/mnt/user-data/outputs/` and present for download
 If Notion tools aren't connected:
 > ⚠️ Notion isn't connected right now. I've saved the .md file to Obsidian — you can manually add it to Notion later.
 
-### Project Not Found
-If specified project doesn't exist in Notion:
-> I couldn't find a project called "[name]". Creating the doc without a project link. You can add the relation manually in Notion.
+### Folder Scan Failed
+If can't scan Obsidian vault:
+> ⚠️ Couldn't scan your vault. Please tell me the project folder name.
 
-### Folder Creation Failed
-If can't create project subfolder:
-> ⚠️ Couldn't create the project folder. Saving to the parent folder instead.
+### Project Not Found in Notion
+If specified project doesn't exist in Notion search:
+> I couldn't find a project called "[name]" in Notion. Creating the doc without a project link. You can add the relation manually.
 
 
 ## Quick Reference
 
 | User Says | Action |
 |-----------|--------|
-| "doc it" | Ask for title, project, folder → save both |
-| "doc it for Claude" | Pre-select Claude project, ask for folder |
-| "doc it in Work Projects" | Pre-select folder, ask for title/project |
-| "doc this to Personal Projects for Home Server" | All info provided, just confirm and save |
+| "doc it" | Scan vault → Ask title, folder, project → Save both |
+| "doc it for Claude" | Scan vault → Pre-select Claude if exists → Ask folder |
+| "doc it in Work Projects" | Scan Work Projects → Show those folders → Ask title |
+| "doc this to Personal Projects/Home-Server" | All info provided → Confirm and save |
 
 ## Example Flow
 
 **User**: "doc it"
 
-**Claude** (using ask_user_input_v0):
-1. What should this doc be titled? → [suggested title] / Custom
-2. Which project? → Claude / Home Server / ... / None  
-3. Work or Personal? → Work Projects / Personal Projects
+**Claude**:
+1. Scans `/Users/nirvahnthakur/.../Project Notes/Work Projects/` → finds: `Claude`, `RASPI5-n8n`
+2. Scans `/Users/nirvahnthakur/.../Project Notes/Personal Projects/` → finds: `Home-Server`, `Test`
+3. Asks via `ask_user_input_v0`:
+   - Title: "Doc-It Skill Setup" / Custom
+   - Work or Personal: Work Projects / Personal Projects
+   - Folder: Claude / RASPI5-n8n / ➕ Create new folder
 
-**User selects**: "Claude Workflow Automation" / "Claude" / "Work Projects"
+**User selects**: "Doc-It Skill Setup" / "Work Projects" / "Claude"
 
 **Claude**:
-1. Creates folder: `.../Work Projects/Claude/` (if doesn't exist)
-2. Writes to `.../Work Projects/Claude/claude-workflow-automation.md`
-3. Content includes `[[Claude]]` wiki-links for graph
-4. Creates Notion page with relation to Claude project
-5. Confirms:
+1. Writes to `.../Work Projects/Claude/doc-it-skill-setup.md`
+2. Content includes `[[Claude]]` wiki-links
+3. Creates Notion page with relation to Claude project
+4. Confirms:
 
 > ✅ **Done!**
 >
-> 📁 **Obsidian**: `Work Projects/Claude/claude-workflow-automation.md`
-> 📓 **Notion**: Claude Workflow Automation — [link]
+> 📁 **Obsidian**: `Work Projects/Claude/doc-it-skill-setup.md`
+> 📓 **Notion**: Doc-It Skill Setup — [link]
 >
 > Linked to: [[Claude]]
->
-> Your Obsidian graph will now show this doc connected to the Claude project.
+
 
 ## Shortcut Patterns
 
 If user provides info upfront, skip those questions:
 
-- "doc it for Home Server" → Skip project question
-- "doc it as 'API Setup Guide'" → Skip title question  
-- "doc it to Personal Projects" → Skip folder question
-- "doc it for Claude in Work Projects as 'MCP Integration'" → Skip all questions, just confirm
+- "doc it for Claude" → Skip project question, still show folder scan results
+- "doc it as 'API Setup Guide'" → Skip title question
+- "doc it to Work Projects" → Skip work/personal question
+- "doc it to Work Projects/Claude as 'MCP Integration'" → Skip all, just confirm
+
+## New Folder Creation Flow
+
+If user selects "➕ Create new folder":
+
+1. Ask: "What should the new folder be called?"
+2. User types: "PulsePathAI"
+3. Create folder: `mkdir -p .../Work Projects/PulsePathAI`
+4. Write file into that new folder
+5. Confirm creation of both folder and file
+
+## Special Cases
+
+### Multi-Topic Conversations
+
+If conversation covered multiple topics, link them together:
+
+```markdown
+## Related Docs
+- [[Topic 1 Doc]] — First part of this conversation
+- [[Topic 2 Doc]] — Second part
+```
+
+### Code-Heavy Documentation
+
+For technical docs with lots of code:
+- Preserve all code blocks with syntax highlighting
+- Link to related docs with `[[wiki-links]]`
+- Include troubleshooting sections
