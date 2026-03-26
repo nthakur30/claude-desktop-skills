@@ -7,7 +7,7 @@ description: Dual-output documentation workflow. Triggers on "doc it", "document
 
 When triggered, this skill extracts documentation from the conversation and outputs it in two formats:
 1. **Markdown file** — saved directly to Obsidian vault with `[[wiki-links]]` for graph connections
-2. **Notion page** — created in the user's Project Notes database
+2. **Notion page** — created in user's chosen database
 
 ## Trigger Phrases
 
@@ -20,14 +20,9 @@ Activate when user says any of:
 - "make a doc from this"
 - "add this to my notes"
 
-## Step 1: Scan Obsidian Vault for ACTUAL Folders
+## Step 1: Scan BOTH Obsidian Vault AND Notion
 
-**CRITICAL: Only show folders that ACTUALLY EXIST in the vault scan. Do NOT hardcode or assume folder names.**
-
-**Vault base path**: `/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes`
-
-### Scan Process
-
+**Scan Obsidian for folders:**
 ```javascript
 // Scan Work Projects
 desktop-commander:list_directory({
@@ -42,90 +37,98 @@ desktop-commander:list_directory({
 })
 ```
 
-### Parse Results STRICTLY
+**Scan Notion for databases:**
+```javascript
+// Search for databases the user can save to
+Notion:notion-search({
+  query: "database",
+  query_type: "internal",
+  filters: {},
+  page_size: 15
+})
+```
 
-From the scan results:
+From Notion search results:
+- Extract items where `type: "database"`
+- Collect their `title` and `id` for the options list
+- Ignore pages (type: "page")
+
+
+### Parse Obsidian Results STRICTLY
+
+From the Obsidian scan:
 - **ONLY** extract lines starting with `[DIR]`
-- **IGNORE** lines starting with `[FILE]` — these are loose files, not folders
-- **IGNORE** `.obsidian`, `.DS_Store`, and hidden folders (starting with `.`)
-- Build a list of **ACTUAL folder names found**
+- **IGNORE** `[FILE]` entries — these are loose files, not folders
+- **IGNORE** `.obsidian`, `.DS_Store`, and hidden folders
 
-**Example scan result:**
-```
-[FILE] .DS_Store
-[DIR] Test
-[FILE] some-doc.md
-```
+### Parse Notion Results
 
-From this, ONLY "Test" is a valid folder option.
+From the Notion search:
+- Extract only items with `"type": "database"`
+- Save both `title` and `id` for each database
+- Common databases found:
+  - "Project Notes" — main documentation database
+  - "✅ To-Do Database" — tasks
+  - "Projects" — project tracker
 
+## Step 2: Ask User for ALL Details
 
-## Step 2: Ask User for Details (with REAL folders only)
-
-Use `ask_user_input_v0` with **ONLY the actual folders found** in Step 1.
-
-### Question Flow
-
-**Question 1: Title**
-```json
-{
-  "question": "What should this doc be titled?",
-  "type": "single_select",
-  "options": ["[Suggested title]", "Custom title"]
-}
-```
-
-**Question 2: Work or Personal**
-```json
-{
-  "question": "Work or Personal project?",
-  "type": "single_select",
-  "options": ["Work Projects", "Personal Projects"]
-}
-```
-
-**Question 3: Project Folder (DYNAMIC - from scan)**
-
-Build options from ACTUAL scan results:
+Use `ask_user_input_v0` with **ACTUAL options from both scans**.
 
 ```json
 {
-  "question": "Which project folder?",
-  "type": "single_select",
-  "options": ["[ONLY FOLDERS FOUND IN SCAN]", "➕ Create new folder"]
+  "questions": [
+    {
+      "question": "What should this doc be titled?",
+      "type": "single_select",
+      "options": ["[Suggested title]", "Custom title"]
+    },
+    {
+      "question": "Where in Notion should I save this?",
+      "type": "single_select",
+      "options": ["[DATABASES FOUND IN NOTION SCAN]"]
+    },
+    {
+      "question": "Work or Personal project in Obsidian?",
+      "type": "single_select",
+      "options": ["Work Projects", "Personal Projects"]
+    },
+    {
+      "question": "Which Obsidian folder?",
+      "type": "single_select",
+      "options": ["[FOLDERS FOUND IN OBSIDIAN SCAN]", "➕ Create new folder"]
+    }
+  ]
 }
 ```
 
-**Example — if scan found these folders:**
-- Work Projects: `Claude`, `RASPI5-n8n`
-- Personal Projects: `Test`, `Home-Server`
 
-And user selected "Work Projects", show:
+### Dynamic Notion Database Options Example
+
+If Notion scan found these databases:
+- Project Notes (id: 28543898-8065-806e-8a63-f3fcec25888f)
+- ✅ To-Do Database (id: 27043898-8065-8107-a846-ef5b91c1637e)
+- Projects (id: 1be43898-8065-81ab-b685-ddbde476e5f8)
+
+Show:
 ```json
 {
-  "options": ["Claude", "RASPI5-n8n", "➕ Create new folder"]
+  "question": "Where in Notion should I save this?",
+  "options": ["Project Notes", "✅ To-Do Database", "Projects"]
 }
 ```
 
-**If NO folders found in selected category:**
-```json
-{
-  "options": ["➕ Create new folder"]
-}
-```
+**Store the database ID** for the selected option to use when creating the page.
 
-### Handling "➕ Create new folder"
+### Handling Custom Title
 
-If user selects this, ask:
-> What should the new folder be called?
-
-Then create it before saving the file.
-
-### Handling "Custom title"
-
-If user selects this, ask:
+If user selects "Custom title", ask:
 > What title do you want for this doc?
 
+### Handling New Folder
+
+If user selects "➕ Create new folder", ask:
+> What should the new folder be called?
 
 ## Step 3: Extract & Structure Content
 
@@ -139,7 +142,6 @@ project: "[[Project Folder Name]]"
 tags: [relevant, tags, here]
 related:
   - "[[Related Doc 1]]"
-  - "[[Related Doc 2]]"
 ---
 
 # [Document Title]
@@ -148,183 +150,182 @@ related:
 > **Created**: [Date]
 
 ## Overview
-[2-3 sentence summary of what this document covers]
+[2-3 sentence summary]
 
 ## [Main Sections]
-[Extracted and organized content from conversation]
+[Content from conversation]
 
 ## Key Points
-- [Bullet summary of important takeaways]
+- [Bullet summary]
 
 ## Related
 - [[Project Folder Name]] — Parent project
-- [[Other Related Doc]] — If referenced in conversation
 
 ## Next Steps
-- [ ] [Action items as tasks]
+- [ ] [Action items]
 
 ---
 *Documentation generated [Date] via Claude*
 ```
 
+
 ### Wiki-Link Rules for Obsidian Graph
 
 **ALWAYS use `[[double brackets]]` for:**
-- Project folder names: `[[Claude]]`, `[[Home-Server]]`, `[[RASPI5-n8n]]`
-- Related documents: `[[API Setup Guide]]`, `[[Docker Configuration]]`
-- Concepts that might have their own notes: `[[n8n]]`, `[[Notion API]]`, `[[MCP]]`
-- Cross-references: `See [[Related Topic]]`
-
-**Format patterns:**
-- Link to project: `[[Project Name]]`
-- Link with alias: `[[actual-file-name|Display Text]]`
-- Link to heading: `[[Document#Heading]]`
-
-
-### Content Extraction Rules
-
-1. **Code blocks** — preserve with language tags
-2. **Diagrams** — include Mermaid syntax if generated
-3. **Commands** — wrap in code blocks
-4. **Architecture decisions** — capture reasoning
-5. **Troubleshooting steps** — preserve in order
-6. **Links/resources** — include all mentioned URLs
-7. **Related concepts** — wrap in `[[wiki-links]]` for graph connections
+- Project folder names: `[[Claude]]`, `[[Home-Server]]`
+- Related documents: `[[API Setup Guide]]`
+- Concepts: `[[n8n]]`, `[[Notion API]]`, `[[MCP]]`
 
 ## Step 4: Save to Obsidian Vault
 
 ### Path Construction
-
 ```
 /Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[Work or Personal Projects]/[Project Folder]/[filename].md
 ```
 
 ### Create Folder if New
-
-If user selected "➕ Create new folder", create it first:
-
 ```javascript
 desktop-commander:start_process({
-  command: "mkdir -p '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[new-project-name]'",
+  command: "mkdir -p '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[project]'",
   timeout_ms: 5000
 })
 ```
 
 ### Filename Rules
-- Lowercase
-- Replace spaces with hyphens
-- Remove special characters (except hyphens)
+- Lowercase, hyphens instead of spaces
+- Remove special characters
 - Keep under 50 chars
-- Example: "Home Assistant Setup Guide" → `home-assistant-setup-guide.md`
 
 ### Write File
-
 ```javascript
 desktop-commander:write_file({
-  path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[project]/[filename].md",
-  content: "---\ntitle: ...\nproject: \"[[Project Name]]\"\n---\n\n# Content...",
+  path: "/.../[folder]/[project]/[filename].md",
+  content: "---\ntitle: ...\n---\n\n# Content...",
   mode: "rewrite"
 })
 ```
 
 
-## Step 5: Create Notion Page
+## Step 5: Create Notion Page (in USER-SELECTED database)
 
-Use the Notion MCP to create a page in Project Notes database.
+**CRITICAL: Use the database ID from the user's selection in Step 2.**
 
-**Database ID**: `collection://28543898-8065-8094-a590-000ba4f44803`
+### Fetch Database Schema First
 
-**Required properties**:
-- `Title ` (note the trailing space) — the document title
-- `date:Date:start` — ISO date string (YYYY-MM-DD)
-- `date:Date:is_datetime` — set to 0
-- `Project` — JSON array of page URLs if linking to a project
-
-### Project Linking for Notion
-
-Search for the project in Notion (may have different name than Obsidian folder):
+Before creating a page, fetch the selected database to get its schema:
 
 ```javascript
-Notion:notion-search({
-  query: "Project Name",
-  query_type: "internal",
-  filters: {}
+Notion:notion-fetch({
+  id: "[selected-database-id]"
 })
 ```
 
-Then include the page URL in the relation.
+This returns the database properties (columns). Use these to set the correct property names.
 
-### Notion API Call
+### Common Database Schemas
+
+**Project Notes** (collection://28543898-8065-8094-a590-000ba4f44803):
+- `Title ` (note trailing space) — title property
+- `date:Date:start` — date property
+- `Project` — relation to Projects database
+
+**Projects** (collection://1be43898-8065-81de-ada7-000b3fff7492):
+- `Name` — title property
+- `Category` — select
+- `Status` — status
+- `Date Range` — date
+
+### Create Page in Selected Database
 
 ```javascript
 Notion:notion-create-pages({
-  parent: { data_source_id: "28543898-8065-8094-a590-000ba4f44803" },
+  parent: { data_source_id: "[USER-SELECTED-DATABASE-ID]" },
   pages: [{
     properties: {
-      "Title ": "Document Title Here",
-      "date:Date:start": "2026-03-26",
-      "date:Date:is_datetime": 0,
-      "Project": "[\"https://notion.so/project-page-id\"]"
+      "[title-property-name]": "Document Title",
+      "date:[date-property]:start": "2026-03-26",
+      "date:[date-property]:is_datetime": 0
+      // Add other properties based on schema
     },
     content: "# Document content..."
   }]
 })
 ```
 
+
+### Project Linking (if database has relation property)
+
+If the selected database has a Project relation, search for the project:
+
+```javascript
+Notion:notion-search({
+  query: "[Project Name]",
+  query_type: "internal",
+  filters: {}
+})
+```
+
+Then include the page URL in the relation property.
+
 ## Step 6: Confirm Both Outputs
 
 > ✅ **Documentation saved to both locations:**
 >
 > 📁 **Obsidian**: `[folder]/[project]/[filename].md`
-> 📓 **Notion**: [Title] — [notion page link]
+> 📓 **Notion**: [Title] in **[Database Name]** — [link]
 >
 > Linked to project: [[Project Name]]
-
 
 ## Error Handling
 
 ### Desktop Commander Not Available
 > ⚠️ Can't write directly to Obsidian. Creating a downloadable .md file instead.
 
-Fall back to `/mnt/user-data/outputs/` and present for download.
-
 ### Notion MCP Not Available
 > ⚠️ Notion isn't connected. Saved to Obsidian only.
 
-### No Folders Found in Category
-Show only "➕ Create new folder" as the option.
+### No Databases Found in Notion
+> ⚠️ Couldn't find any databases. Please provide a Notion database URL or create one first.
 
-### Folder Scan Failed
-> ⚠️ Couldn't scan your vault. Please tell me the folder name.
+### Database Schema Mismatch
+If the selected database doesn't have expected properties:
+> ⚠️ This database doesn't have a date property. Creating page with title only.
+
 
 ## Quick Reference
 
 | User Says | Action |
 |-----------|--------|
-| "doc it" | Scan vault → Ask title, category, folder → Save both |
-| "doc it for [project]" | Match to existing folder if found |
-| "doc it in Work Projects" | Pre-select category, scan for folders |
+| "doc it" | Scan both → Ask all questions → Save both |
+| "doc it to Project Notes" | Pre-select Notion DB, ask rest |
+| "doc it for Claude in Work" | Pre-select Obsidian folder |
 
 ## Example Flow
 
 **User**: "doc it"
 
 **Claude**:
-1. Scans Work Projects → finds: (no folders)
-2. Scans Personal Projects → finds: `Test`
-3. Asks:
+1. Scans Obsidian → finds: `Test` folder in Personal Projects
+2. Scans Notion → finds: `Project Notes`, `✅ To-Do Database`, `Projects`
+3. Asks via `ask_user_input_v0`:
    - Title: "Doc-It Skill Setup" / Custom
+   - Notion database: Project Notes / ✅ To-Do Database / Projects
    - Work or Personal: Work / Personal
-   - Folder: `Test` / ➕ Create new folder (if Personal selected)
-   
-**User selects**: "Doc-It Skill Setup" / "Work Projects" / "➕ Create new folder"
+   - Obsidian folder: Test / ➕ Create new folder
 
-**Claude**: "What should the new folder be called?"
-
-**User**: "Claude"
+**User selects**: 
+- "Doc-It Skill Setup"
+- "Project Notes"
+- "Personal Projects"
+- "Test"
 
 **Claude**:
-1. Creates folder: `.../Work Projects/Claude/`
-2. Writes `.../Work Projects/Claude/doc-it-skill-setup.md`
-3. Creates Notion page
-4. Confirms both locations
+1. Writes to Obsidian: `.../Personal Projects/Test/doc-it-skill-setup.md`
+2. Fetches Project Notes schema
+3. Creates Notion page in Project Notes database
+4. Confirms:
+
+> ✅ **Done!**
+>
+> 📁 **Obsidian**: `Personal Projects/Test/doc-it-skill-setup.md`
+> 📓 **Notion**: Doc-It Skill Setup in **Project Notes** — [link]
