@@ -7,6 +7,7 @@ A collection of custom skills for Claude Desktop. Each skill is packaged as a `.
 | Skill | Description | Install |
 |-------|-------------|---------|
 | [Resume Evaluator](skills/resume-evaluator/) | Score resumes, check ATS, rewrite bullets, build one-page version | [resume-evaluator.skill](releases/resume-evaluator.skill) |
+| [Doc-It](skills/doc-it/) | Dual-output docs: saves to Obsidian vault with wiki-links + creates Notion page simultaneously | [doc-it.skill](releases/doc-it.skill) |
 
 ## How to Install a Skill
 
