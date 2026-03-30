@@ -39,7 +39,6 @@ desktop-commander:list_directory({
 
 **Scan Notion for databases:**
 ```javascript
-// Search for databases the user can save to
 Notion:notion-search({
   query: "database",
   query_type: "internal",
@@ -53,7 +52,6 @@ From Notion search results:
 - Collect their `title` and `id` for the options list
 - Ignore pages (type: "page")
 
-
 ### Parse Obsidian Results STRICTLY
 
 From the Obsidian scan:
@@ -66,10 +64,6 @@ From the Obsidian scan:
 From the Notion search:
 - Extract only items with `"type": "database"`
 - Save both `title` and `id` for each database
-- Common databases found:
-  - "Project Notes" — main documentation database
-  - "✅ To-Do Database" — tasks
-  - "Projects" — project tracker
 
 ## Step 2: Ask User for ALL Details
 
@@ -102,37 +96,55 @@ Use `ask_user_input_v0` with **ACTUAL options from both scans**.
 }
 ```
 
+**Store the database ID** for the selected Notion option to use when creating the page.
 
-### Dynamic Notion Database Options Example
+If user selects "Custom title" → ask: *What title do you want for this doc?*
+If user selects "➕ Create new folder" → ask: *What should the new folder be called?*
 
-If Notion scan found these databases:
-- Project Notes (id: 28543898-8065-806e-8a63-f3fcec25888f)
-- ✅ To-Do Database (id: 27043898-8065-8107-a846-ef5b91c1637e)
-- Projects (id: 1be43898-8065-81ab-b685-ddbde476e5f8)
-
-Show:
-```json
-{
-  "question": "Where in Notion should I save this?",
-  "options": ["Project Notes", "✅ To-Do Database", "Projects"]
-}
-```
-
-**Store the database ID** for the selected option to use when creating the page.
-
-### Handling Custom Title
-
-If user selects "Custom title", ask:
-> What title do you want for this doc?
-
-### Handling New Folder
-
-If user selects "➕ Create new folder", ask:
-> What should the new folder be called?
 
 ## Step 3: Extract & Structure Content
 
-Pull relevant content from the conversation. Structure as:
+**This step is MANDATORY and must produce a detailed, thorough document. Do NOT write a short summary. The goal is a complete reference document someone could read months later and fully understand the project.**
+
+### Content Extraction Checklist
+
+Before writing, scan the full conversation and collect answers to ALL of these:
+
+**Project Identity**
+- What is this project/tool/system called?
+- What problem does it solve? What is its core purpose?
+- Who is it for? How does it fit into the user's broader workflow?
+
+**Architecture & Structure**
+- What are the major components, modules, or parts?
+- How do they connect or interact?
+- What is the data flow or process flow?
+- What technologies, tools, languages, or platforms are used?
+
+**Implementation Details**
+- What specific configuration, settings, or parameters were discussed?
+- What code, scripts, or commands were written or referenced?
+- What file paths, endpoints, or identifiers were mentioned?
+
+**Decisions & Reasoning**
+- What design decisions or tradeoffs were made?
+- What alternatives were considered and rejected?
+- Why was this approach chosen?
+
+**Problems & Solutions**
+- What errors, bugs, or blockers came up?
+- How were they resolved?
+- What edge cases or gotchas were identified?
+
+**Status & Next Steps**
+- What has been completed?
+- What is still in progress or not yet started?
+- What are the explicit next actions?
+
+
+### Document Template
+
+Use ALL sections that apply. **Never skip a section because it's hard to fill — if it was discussed, it belongs in the doc.**
 
 ```markdown
 ---
@@ -142,6 +154,7 @@ project: "[[Project Folder Name]]"
 tags: [relevant, tags, here]
 related:
   - "[[Related Doc 1]]"
+  - "[[Related Tool or Concept]]"
 ---
 
 # [Document Title]
@@ -150,19 +163,59 @@ related:
 > **Created**: [Date]
 
 ## Overview
-[2-3 sentence summary]
+[3-5 sentences. What is this? What problem does it solve? Why does it matter?
+Be specific — mention the tools it integrates with using [[wiki-links]].]
 
-## [Main Sections]
-[Content from conversation]
+## Purpose & Goals
+- **Primary goal**: [What this is designed to do]
+- **Secondary goals**: [Any supporting objectives]
+- **Not in scope**: [What this deliberately does NOT do, if mentioned]
 
-## Key Points
-- [Bullet summary]
+## Architecture & Components
+
+### [Component 1 Name]
+[What it does, how it works, why it exists — link tools with [[Tool Name]]]
+
+### [Component 2 Name]
+[What it does, how it works, why it exists]
+
+### How They Connect
+[Describe the flow: what triggers what, what data passes between components]
+
+## Technical Details
+
+### Technologies Used
+- **[[Tool/Language/Platform]]**: [Why it's used / what role it plays]
+
+### Configuration & Settings
+[Any specific config values, API keys structure, environment variables, file paths, etc.]
+
+### Key Code / Commands
+[Any important scripts, functions, or commands that were written or referenced]
+
+## Decisions & Tradeoffs
+| Decision | Why | Alternatives Considered |
+|----------|-----|------------------------|
+| [Choice made] | [Reasoning] | [What else was considered] |
+
+## Problems & Solutions
+### [Problem Title]
+- **Issue**: [What went wrong]
+- **Root cause**: [Why it happened]
+- **Solution**: [How it was fixed]
+
+## Current Status
+- ✅ [What's done]
+- 🔄 [What's in progress]
+- ⏳ [What hasn't started yet]
+
+## Next Steps
+- [ ] [Specific action item with enough context to act on later]
 
 ## Related
 - [[Project Folder Name]] — Parent project
-
-## Next Steps
-- [ ] [Action items]
+- [[Related Tool]] — [Why it connects]
+- [[Concept Name]] — [Why it's relevant]
 
 ---
 *Documentation generated [Date] via Claude*
@@ -171,39 +224,153 @@ related:
 
 ### Wiki-Link Rules for Obsidian Graph
 
-**ALWAYS use `[[double brackets]]` for:**
-- Project folder names: `[[Claude]]`, `[[Home-Server]]`
-- Related documents: `[[API Setup Guide]]`
-- Concepts: `[[n8n]]`, `[[Notion API]]`, `[[MCP]]`
+**CRITICAL: Wiki-links are what make Obsidian useful. Every doc must have meaningful `[[links]]` so the graph shows real connections. Sparse or missing links is a failure.**
+
+#### What ALWAYS gets a wiki-link
+
+| Content Type | Example |
+|---|---|
+| Project folder / parent project | `[[Home-Server]]`, `[[Claude]]`, `[[n8n]]` |
+| Related docs or guides | `[[API Setup Guide]]`, `[[Tailscale Setup]]` |
+| Tools, platforms, services | `[[Notion]]`, `[[Docker]]`, `[[GitHub]]` |
+| Key concepts or patterns | `[[MCP]]`, `[[Webhook]]`, `[[RAG]]` |
+| Technologies used | `[[Python]]`, `[[React]]`, `[[PostgreSQL]]` |
+| Other projects this touches | `[[Home-Server]]` if referencing infra |
+
+#### Linking rules
+
+1. **First mention only** — Link a term the first time it appears in each section, not every time
+2. **Be precise** — `[[n8n Workflow Setup]]` is better than `[[Setup]]`
+3. **Link in frontmatter** — `project: "[[Project Folder Name]]"` and `related: ["[[Doc Name]]"]`
+4. **Required: Related section** — every doc must have at least 2-3 `[[links]]` in Related
+5. **Don't link generic words** — never link `[[file]]`, `[[code]]`, `[[user]]`
+
+#### Required links in every document
+
+```markdown
+---
+project: "[[Project Folder Name]]"     ← REQUIRED: links to parent project
+related:
+  - "[[At least one related doc]]"     ← REQUIRED: minimum one cross-link
+---
+
+## Overview
+This project extends [[Parent Project]] and integrates with [[Related Tool]]...
+
+## Related
+- [[Project Folder Name]] — Parent project
+- [[Related Tool]] — [why it connects]
+- [[Concept Name]] — [why it's relevant]
+```
+
+#### How to find what to link
+
+Scan the conversation for:
+- Any tool or technology mentioned → `[[tool name]]`
+- Any other project referenced → `[[project name]]`
+- Any concept that might have its own Obsidian note → `[[concept]]`
+- The Obsidian folder the doc lives in → always link the parent folder
+
+#### Good vs bad linking examples
+
+❌ **Too sparse** (do not do this):
+```markdown
+## Overview
+This is a skill that saves documentation to Notion and Obsidian.
+
+## Related
+- Parent project
+```
+
+✅ **Correct linking**:
+```markdown
+## Overview
+Doc-It is a dual-output documentation skill for [[Claude Desktop]] that saves structured
+notes to [[Obsidian]] and [[Notion]] simultaneously. It was built as part of the [[Claude]]
+project to eliminate manual copy-paste from Claude sessions into the knowledge base.
+
+## Related
+- [[Claude]] — Parent project
+- [[Obsidian]] — Primary vault target
+- [[Notion]] — Secondary documentation target
+- [[MCP]] — Protocol used for Notion API integration
+- [[Desktop Commander]] — Used to write files to the vault
+```
+
+### Content Depth Standard
+
+❌ **Too shallow** (do not do this):
+> ## Overview
+> This is a skill that saves documentation.
+
+✅ **Correct depth**:
+> ## Overview
+> Doc-It is a dual-output documentation workflow that simultaneously saves a structured
+> Markdown file to the user's [[Obsidian]] vault and creates a linked [[Notion]] page.
+> It was built to eliminate the manual copy-paste step between [[Claude]] conversations
+> and the user's personal knowledge base, ensuring no project context is lost after a session.
+
 
 ## Step 4: Save to Obsidian Vault
 
+**THIS STEP IS NOT OPTIONAL. You must write the .md file to Obsidian every time. Do not skip, summarize, or defer this step. If Desktop Commander fails, fall back to a downloadable file — but always produce the file.**
+
 ### Path Construction
+
+Build the full path using the user's answers from Step 2:
+
 ```
-/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[Work or Personal Projects]/[Project Folder]/[filename].md
+BASE:      /Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/
+SEGMENT 1: [Work Projects] or [Personal Projects]   ← from user's answer
+SEGMENT 2: [Project Folder Name]                    ← from user's answer
+SEGMENT 3: [filename].md                            ← derived from title
+
+FULL PATH = BASE + SEGMENT 1 + "/" + SEGMENT 2 + "/" + SEGMENT 3
+```
+
+**Before writing, verify:**
+- SEGMENT 1 is exactly `Work Projects` or `Personal Projects` — nothing else
+- SEGMENT 2 matches a folder from the Obsidian scan (or the new folder name confirmed by user)
+- SEGMENT 3 follows filename rules below
+
+### Filename Rules
+- Lowercase, hyphens instead of spaces
+- Remove special characters (`?`, `!`, `:`, `'`, `"`, `/`)
+- Keep under 50 chars
+- Example: `Doc-It Skill Setup` → `doc-it-skill-setup.md`
+
+### Concrete Path Example
+
+User selected **Personal Projects** → folder **Test** → title **Doc-It Skill Setup**:
+```
+/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Personal Projects/Test/doc-it-skill-setup.md
 ```
 
 ### Create Folder if New
 ```javascript
 desktop-commander:start_process({
-  command: "mkdir -p '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[project]'",
+  command: "mkdir -p '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[Work or Personal Projects]/[Project Folder]'",
   timeout_ms: 5000
 })
 ```
 
-### Filename Rules
-- Lowercase, hyphens instead of spaces
-- Remove special characters
-- Keep under 50 chars
+### Write File — REQUIRED
 
-### Write File
+**You must call this. Do not skip it.**
+
 ```javascript
 desktop-commander:write_file({
-  path: "/.../[folder]/[project]/[filename].md",
-  content: "---\ntitle: ...\n---\n\n# Content...",
+  path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[Work or Personal Projects]/[Project Folder]/[filename].md",
+  content: "---\ntitle: ...\n---\n\n# Full document content here...",
   mode: "rewrite"
 })
 ```
+
+**After writing, verify it succeeded.** If `desktop-commander` returns an error, immediately fall back:
+```
+⚠️ Couldn't write to Obsidian. Creating a downloadable .md file instead.
+```
+Then use `present_files` to deliver the file to the user.
 
 
 ## Step 5: Create Notion Page (in USER-SELECTED database)
@@ -212,15 +379,11 @@ desktop-commander:write_file({
 
 ### Fetch Database Schema First
 
-Before creating a page, fetch the selected database to get its schema:
-
 ```javascript
 Notion:notion-fetch({
   id: "[selected-database-id]"
 })
 ```
-
-This returns the database properties (columns). Use these to set the correct property names.
 
 ### Common Database Schemas
 
@@ -243,19 +406,15 @@ Notion:notion-create-pages({
   pages: [{
     properties: {
       "[title-property-name]": "Document Title",
-      "date:[date-property]:start": "2026-03-26",
+      "date:[date-property]:start": "2026-03-30",
       "date:[date-property]:is_datetime": 0
-      // Add other properties based on schema
     },
     content: "# Document content..."
   }]
 })
 ```
 
-
 ### Project Linking (if database has relation property)
-
-If the selected database has a Project relation, search for the project:
 
 ```javascript
 Notion:notion-search({
@@ -266,6 +425,7 @@ Notion:notion-search({
 ```
 
 Then include the page URL in the relation property.
+
 
 ## Step 6: Confirm Both Outputs
 
@@ -288,9 +448,7 @@ Then include the page URL in the relation property.
 > ⚠️ Couldn't find any databases. Please provide a Notion database URL or create one first.
 
 ### Database Schema Mismatch
-If the selected database doesn't have expected properties:
 > ⚠️ This database doesn't have a date property. Creating page with title only.
-
 
 ## Quick Reference
 
@@ -307,23 +465,11 @@ If the selected database doesn't have expected properties:
 **Claude**:
 1. Scans Obsidian → finds: `Test` folder in Personal Projects
 2. Scans Notion → finds: `Project Notes`, `✅ To-Do Database`, `Projects`
-3. Asks via `ask_user_input_v0`:
-   - Title: "Doc-It Skill Setup" / Custom
-   - Notion database: Project Notes / ✅ To-Do Database / Projects
-   - Work or Personal: Work / Personal
-   - Obsidian folder: Test / ➕ Create new folder
-
-**User selects**: 
-- "Doc-It Skill Setup"
-- "Project Notes"
-- "Personal Projects"
-- "Test"
-
-**Claude**:
-1. Writes to Obsidian: `.../Personal Projects/Test/doc-it-skill-setup.md`
-2. Fetches Project Notes schema
-3. Creates Notion page in Project Notes database
-4. Confirms:
+3. Asks via `ask_user_input_v0` for title, Notion DB, Work/Personal, folder
+4. User selects: "Doc-It Skill Setup" / "Project Notes" / "Personal Projects" / "Test"
+5. Writes `.../Personal Projects/Test/doc-it-skill-setup.md` with full content and `[[wiki-links]]`
+6. Fetches Project Notes schema → creates Notion page
+7. Confirms:
 
 > ✅ **Done!**
 >
