@@ -1,205 +1,291 @@
 ---
 name: doc-it
-description: Dual-output documentation workflow. Triggers on "doc it", "document this", "save to notion", "create documentation", or any request to save conversation content as documentation. Generates a downloadable .md file AND creates a Notion page simultaneously. Always use this skill when the user wants to preserve technical docs, project notes, meeting notes, or any knowledge from a conversation.
+description: "Obsidian documentation workflow. Triggers on \"doc it\", \"document this\", \"save to obsidian\", \"create documentation\", or any request to save conversation content as documentation. Creates a new note in the vault OR appends to an existing note. Always use this skill when the user wants to preserve technical docs, project notes, meeting notes, or any knowledge from a conversation."
 ---
 
-# Doc-It: Dual Documentation Output
+# Doc-It: Obsidian Documentation Workflow
 
-When triggered, extract documentation from the conversation and save it in two places:
-1. **Markdown file** — saved to Obsidian vault with `[[wiki-links]]`
-2. **Notion page** — created in user's chosen database, linked to a project
+When triggered, extract documentation from the conversation and save it to the Obsidian vault — either as a **new note** or **appended to an existing one**.
 
----
-
-## Step 1: Scan Obsidian and Notion
-
-Run all three scans before asking anything.
-
-**Obsidian — Work Projects:**
+**Vault root:**
 ```
-desktop-commander:list_directory({
-  path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Work Projects",
-  depth: 1
+/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes
+```
+
+---
+
+## Step 1: Determine Mode
+
+Ask the user one question using `ask_user_input_v0`:
+
+```
+"New note or add to an existing one?"
+Options: ["📄 New note", "✏️ Add to existing note"]
+```
+
+Branch to **Step 2A** or **Step 2B** based on answer.
+
+---
+
+## Step 2A: New Note — Collect Details
+
+Ask all questions in a single `ask_user_input_v0` call:
+
+```
+Q1: "What should this note be titled?"
+    → Suggest a title based on the conversation + "Custom title"
+
+Q2: "Where should it go?"
+    → Options built from the vault structure below
+    → Default option always shown first: "📥 00-inbox (sort later)"
+
+Q3: "Any tags to add?" (multi-select)
+    → Suggest relevant tags based on conversation content
+    → Always include "untagged" as an option
+```
+
+If user picks **"Custom title"** → ask for it before continuing.
+If user picks a **parent folder** with subfolders (e.g. "Dev & Architecture") → follow up with subfolder options from the map below.
+
+**Store:** final title, full destination folder path, tags list.
+
+---
+
+## Step 2B: Existing Note — Search, Read, and Place
+
+**Ask:** "What's the name or topic of the note you want to add to?"
+
+### 2B-1: Find the note
+
+Run both searches:
+
+```
+desktop-commander:start_process({
+  command: "find '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes' -name '*.md' | xargs grep -li '[search term]' 2>/dev/null | head -20",
+  timeout_ms: 8000
 })
 ```
 
-**Obsidian — Personal Projects:**
 ```
-desktop-commander:list_directory({
-  path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/Personal Projects",
-  depth: 1
+desktop-commander:start_process({
+  command: "find '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes' -iname '*[search term]*' -name '*.md' | head -20",
+  timeout_ms: 8000
 })
 ```
 
-**Notion — Databases:**
-```
-Notion:notion-search({ query: "database", query_type: "internal", filters: {}, page_size: 15 })
-```
-Extract only items where `type: "database"`. Save title and id.
+Deduplicate. Present matches in `ask_user_input_v0`. If no matches → ask user to clarify or offer to create a new note instead.
 
-**Notion — Projects list:**
-```
-Notion:notion-fetch({ id: "collection://1be43898-8065-81de-ada7-000b3fff7492" })
-```
-Extract all project page titles and URLs from the result.
+**Store:** full path of selected file.
 
-**Obsidian parsing rules:**
-- Only use lines starting with `[DIR]`
-- Ignore `[FILE]` entries, `.obsidian`, `.DS_Store`, and hidden folders
+### 2B-2: Read and analyze the note
+
+```
+desktop-commander:read_file({ path: "[selected file path]" })
+```
+
+Parse the file structure:
+- Extract all headings (`#`, `##`, `###`) and their line numbers
+- Identify existing sections and what they contain
+- Note any `## Next Steps` or checklist sections
+
+### 2B-3: Determine where new content belongs
+
+Use the conversation content + the note's existing structure to decide placement:
+
+| New content type | Where to insert |
+|---|---|
+| Expands on an existing section topic | Inside that section, after the last line of it |
+| A new distinct concept or session | New `##` section, before `## Next Steps` if it exists |
+| Action items / tasks | Into existing `## Next Steps` checklist, not a new one |
+| Corrections or updates to a specific fact | Inline, replacing or annotating the relevant line |
+| Completely unrelated to existing sections | New section at bottom, before the footer line |
+
+**Do not** create duplicate sections. If `## Setup` already exists, add to it — don't make `## Setup (Updated)`.
+
+**Store:** insertion point (line number or anchor text), content to insert, edit strategy (`str_replace` or `append`).
 
 ---
 
-## Step 2: Ask User for All Details
+## Vault Folder Map
 
-Ask all questions in one `ask_user_input_v0` call using real data from Step 1.
+Use this to build destination options in Step 2A. Only show `[DIR]` entries.
 
 ```
-Questions:
-1. "What should this doc be titled?" — suggest a title based on conversation + "Custom title"
-2. "Where in Notion should I save this?" — options from Notion database scan
-3. "Which project should this be linked to?" — options from Projects DB fetch + "None / Skip"
-4. "Work or Personal project in Obsidian?" — ["Work Projects", "Personal Projects"]
-5. "Which Obsidian folder?" — options from matching Obsidian scan + "➕ Create new folder"
+00-inbox/
+01-knowledge/
+  AI & Claude Code/
+    AI Fundamentals/
+    CrewAI/
+    AutoGen/
+    LangChain/
+    Microsoft GenAI/
+    Pydantic/
+    RAG/
+  Business/
+  Dev & Architecture/
+    Data Engineering/
+      Airflow / DBT / PySpark / Snowflake / SQL / Structure Questions
+    FastAPI & Docker/
+      Docker / FastAPI
+    Git & GitHub/
+    Python & Data/
+      Machine Learning / Python
+  n8n & Automation/
+02-personal/
+  Capstone / Claude / H2AI / Home Assistant / Home Server /
+  Jarvis / MedFolio / PulsePathAI / RASPI5-n8n / Trading Algo
+03-work/
+  MCP / PDF Extraction Agent
+04-clients/
+05-daily/
+06-archive/
 ```
-
-If user picks "Custom title" — ask for the title before continuing.
-If user picks "➕ Create new folder" — ask for the folder name before continuing.
-
-Store:
-- Selected database ID
-- Selected project URL (or null if skipped)
-- Final title, Obsidian folder path
 
 ---
 
 ## Step 3: Extract and Structure Content
 
-Write the Obsidian file in this format:
+### For a NEW note, write in this format:
 
 ```markdown
 ---
 title: [Title]
 date: [YYYY-MM-DD]
-project: "[[Project Folder Name]]"
-tags: [relevant, tags]
+tags: [tag1, tag2]
 related:
-  - "[[Related Doc]]"
+  - "[[Related Note]]"
 ---
 
 # [Title]
 
-> **Project**: [[Project Folder Name]]
 > **Created**: [Date]
 
 ## Overview
-[2-3 sentence summary]
+[2–3 sentence summary of the conversation]
 
 ## [Main Sections]
-[Content from conversation]
+[Content extracted from conversation — use headers, bullets, code blocks as needed]
 
 ## Next Steps
-- [ ] [Action items]
+- [ ] [Action items if any]
 
 ---
-*Documentation generated [Date] via Claude*
+*Documented [Date] via Claude*
 ```
 
-Wiki-link rules — always use `[[double brackets]]` for:
-- Project names: `[[Claude]]`, `[[Home-Server]]`
-- Related docs: `[[API Setup Guide]]`
-- Key concepts: `[[MCP]]`, `[[n8n]]`
+### For ADDING TO an existing note:
+
+Do NOT dump a dated block at the bottom. Instead:
+- Read the note (Step 2B-2)
+- Identify which existing section the new content belongs in
+- Write content that matches the voice, formatting, and style of that section
+- Use `edit_block` to insert it precisely (Step 4)
+
+New content should feel like it was always part of the note — not a tacked-on addendum.
+
+**Wiki-link rules** — always use `[[double brackets]]` for:
+- Project/tool names: `[[n8n]]`, `[[Claude]]`, `[[Home-Server]]`, `[[MCP]]`
+- Related notes: `[[API Setup Guide]]`, `[[RASPI5-n8n]]`
+- Key concepts: `[[RAG]]`, `[[FastAPI]]`, `[[Docker]]`
+
+**Filename rules (new notes only):** lowercase, hyphens for spaces, no special characters, max 50 chars. Example: `mcp-server-setup-guide.md`
 
 ---
 
-## Step 4: Save to Obsidian
+## Step 4: Write to Obsidian
 
-**Path:**
-```
-/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[Work or Personal Projects]/[Folder]/[filename].md
-```
+### New note:
 
-**Filename rules:** lowercase, hyphens for spaces, no special characters, under 50 chars.
-
-**If new folder needed:**
+**If new folder needed first:**
 ```
 desktop-commander:start_process({
-  command: "mkdir -p '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[scope]/[folder]'",
+  command: "mkdir -p '/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder path]'",
   timeout_ms: 5000
 })
 ```
 
-**Write file:**
+**Write the file:**
 ```
-desktop-commander:write_file({ path: "[full path]", content: "[markdown content]", mode: "rewrite" })
-```
-
-Chunk into 25-30 line blocks if content is long. Use `mode: "append"` for subsequent chunks.
-
----
-
-## Step 5: Create Notion Page
-
-**Always fetch the database schema first:**
-```
-Notion:notion-fetch({ id: "[selected-database-id]" })
-```
-
-**Create the page:**
-```
-Notion:notion-create-pages({
-  parent: { type: "data_source_id", data_source_id: "[selected-data-source-id]" },
-  pages: [{
-    properties: {
-      "Title ": "[Document Title]",
-      "date:Date:start": "[YYYY-MM-DD]",
-      "date:Date:is_datetime": 0,
-      "Project": "[selected-project-url]"   // omit entirely if user chose "None / Skip"
-    },
-    content: "[full markdown content]"
-  }]
+desktop-commander:write_file({
+  path: "/Users/nirvahnthakur/Library/Mobile Documents/iCloud~md~obsidian/Documents/Project Notes/[folder]/[filename].md",
+  content: "[first chunk — max 30 lines]",
+  mode: "rewrite"
 })
 ```
 
-**Known schemas:**
+Chunk into 25–30 line blocks for long content. Use `mode: "append"` for all subsequent chunks.
 
-Project Notes (collection://28543898-8065-8094-a590-000ba4f44803):
-- `Title ` (trailing space) — title
-- `date:Date:start` — date
-- `Project` — relation to Projects DB
+### Editing an existing note:
 
-Projects (collection://1be43898-8065-81de-ada7-000b3fff7492):
-- `Name` — title
-- `Category` — select
-- `Status` — status
+**Never overwrite the whole file.** Use `desktop-commander:edit_block` to make surgical edits:
+
+**To insert content inside an existing section** — use `str_replace` mode, targeting the last meaningful line of that section as the anchor:
+
+```
+desktop-commander:edit_block({
+  file_path: "[full path]",
+  old_string: "[last line of the target section]",
+  new_string: "[last line of the target section]\n\n[new content to add]"
+})
+```
+
+**To add a new section before `## Next Steps`** (or before the footer `---` line if no Next Steps exists):
+
+```
+desktop-commander:edit_block({
+  file_path: "[full path]",
+  old_string: "## Next Steps",
+  new_string: "## [New Section Title]\n\n[content]\n\n## Next Steps"
+})
+```
+
+**To add tasks into an existing `## Next Steps` checklist:**
+
+```
+desktop-commander:edit_block({
+  file_path: "[full path]",
+  old_string: "## Next Steps\n",
+  new_string: "## Next Steps\n- [ ] [new task]\n"
+})
+```
+
+**Rules:**
+- `old_string` must be a unique snippet from the file — include 1–2 lines of surrounding context if needed to ensure uniqueness
+- Never include line number prefixes in `old_string`
+- Re-read the file before each edit if making multiple changes — prior reads become stale after any write
+- If the file has no clear structure to anchor to, append a new dated section at the very bottom (before `*Documented...` footer if present)
 
 ---
 
-## Step 6: Confirm
+## Step 5: Confirm
 
 ```
-✅ Documentation saved to both locations:
+✅ Saved to Obsidian
 
-📁 Obsidian: [Work or Personal Projects]/[Folder]/[filename].md
-📓 Notion: [Title] in [Database Name] — [url]
-🔗 Linked to project: [Project Name]  (omit this line if None / Skip)
+📁 Path: [folder]/[filename].md
+🏷️ Tags: [tags]                        ← new notes only
+✏️ Updated: [title] — [section edited] ← existing notes only
 ```
 
 ---
 
 ## Error Handling
 
-- **Desktop Commander unavailable** — create a downloadable .md file instead, skip Obsidian write
-- **Notion MCP unavailable** — save to Obsidian only, notify user
-- **No databases found** — ask user to provide a Notion database URL
-- **No projects found** — skip project linking, notify user
-- **Schema mismatch** — create page with title only, notify user
+| Situation | Action |
+|---|---|
+| Desktop Commander unavailable | Generate downloadable `.md` file instead, notify user |
+| No search results found | Ask user to clarify or offer to create a new note |
+| Destination folder doesn't exist | Create it with `mkdir -p`, then write |
+| File write fails | Retry once; if it fails again, offer downloadable `.md` |
 
 ---
 
 ## Quick Reference
 
 | User Says | Action |
-|-----------|--------|
-| "doc it" | Full flow — scan, ask all questions, save both |
-| "doc it to Project Notes" | Pre-select that Notion DB, ask rest |
-| "doc it for Claude in Personal" | Pre-select Obsidian folder, ask rest |
+|---|---|
+| "doc it" | Ask new vs existing, then full flow |
+| "doc it to inbox" | Pre-select `00-inbox`, ask title + tags |
+| "doc it to RASPI5" | Pre-select `02-personal/RASPI5-n8n`, ask title + tags |
+| "add this to my n8n note" | Search for n8n notes, confirm, append |
+| "doc it for clients" | Pre-select `04-clients`, ask title + tags |
